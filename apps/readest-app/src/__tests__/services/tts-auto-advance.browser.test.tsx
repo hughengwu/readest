@@ -99,6 +99,12 @@ vi.mock('@/services/tts/NativeTTSClient', () => ({
   }),
 }));
 
+vi.mock('@/services/tts/OfflineTTSClient', () => ({
+  OfflineTTSClient: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+    Object.assign(this, makeMockTTSClient('offline'));
+  }),
+}));
+
 // useEnv/useAuth throw outside their providers; stub them (test-side module
 // mocks, not a production seam). A null appService exercises the web/desktop
 // code paths in useTTSControl (no mobile/iOS branches).

@@ -26,6 +26,12 @@ vi.mock('@/services/tts/NativeTTSClient', () => ({
   }),
 }));
 
+vi.mock('@/services/tts/OfflineTTSClient', () => ({
+  OfflineTTSClient: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+    Object.assign(this, createMockTTSClient('offline'));
+  }),
+}));
+
 // Track the inaudible background keep-alive (WebAudio) toggled for direct-speak
 // engines. Arrow closures so the vi.mock hoist never hits a TDZ on these consts.
 const startKeepAlive = vi.fn();
@@ -264,6 +270,22 @@ describe('TTSController', () => {
       expect(controller.ttsNativeClient).toBeNull();
     });
 
+    test('creates offline client when isAndroidApp', () => {
+      const androidService = createMockAppService(true);
+      const c = new TTSController(androidService, mockView);
+      expect(c.ttsOfflineClient).not.toBeNull();
+    });
+
+    test('does not create offline client on iOS (Android-only for now)', () => {
+      const iosService = createMockAppService(false, true);
+      const c = new TTSController(iosService, mockView);
+      expect(c.ttsOfflineClient).toBeNull();
+    });
+
+    test('does not create offline client when neither Android nor iOS', () => {
+      expect(controller.ttsOfflineClient).toBeNull();
+    });
+
     test('stores preprocessCallback', () => {
       const cb = vi.fn();
       const c = new TTSController(mockAppService, mockView, false, cb);
@@ -317,6 +339,14 @@ describe('TTSController', () => {
       await c.init();
       expect(c.ttsNativeClient!.init).toHaveBeenCalled();
       expect(c.ttsNativeClient!.getAllVoices).toHaveBeenCalled();
+    });
+
+    test('also initializes offline client on Android', async () => {
+      const androidService = createMockAppService(true);
+      const c = new TTSController(androidService, mockView);
+      await c.init();
+      expect(c.ttsOfflineClient!.init).toHaveBeenCalled();
+      expect(c.ttsOfflineClient!.getAllVoices).toHaveBeenCalled();
     });
   });
 
@@ -390,6 +420,27 @@ describe('TTSController', () => {
       );
     });
 
+    test('switches to offline client when voice found in offline voices', async () => {
+      const androidService = createMockAppService(true);
+      const c = new TTSController(androidService, mockView);
+      await c.init();
+      c.ttsOfflineVoices = [{ id: 'offline-v', name: 'Offline', lang: 'zh-CN' }];
+      await c.setVoice('offline-v', 'zh');
+
+      expect(c.ttsClient.name).toBe('offline');
+    });
+
+    test('throws when offline voice found but offline client unavailable', async () => {
+      // non-android, ttsOfflineClient is null, but we force offlineVoices
+      controller.ttsOfflineVoices = [{ id: 'offline-v', name: 'Offline', lang: 'zh-CN' }];
+      controller.ttsEdgeVoices = [];
+      controller.ttsNativeVoices = [];
+
+      await expect(controller.setVoice('offline-v', 'zh')).rejects.toThrow(
+        'Offline TTS client is not available',
+      );
+    });
+
     test('skips disabled voices', async () => {
       controller.ttsEdgeVoices = [
         { id: 'edge-voice-1', name: 'Edge Voice', lang: 'en-US', disabled: true },
@@ -442,6 +493,23 @@ describe('TTSController', () => {
 
       const result = await c.getVoices('en');
       expect(result).toEqual(nativeVoices);
+    });
+
+    test('includes offline voices when available', async () => {
+      const androidService = createMockAppService(true);
+      const c = new TTSController(androidService, mockView);
+      await c.init();
+
+      const offlineVoices: TTSVoicesGroup[] = [
+        { id: 'og', name: 'Offline', voices: [{ id: 'o1', name: 'O1', lang: 'zh-CN' }] },
+      ];
+      vi.mocked(c.ttsOfflineClient!.getVoices).mockResolvedValue(offlineVoices);
+      vi.mocked(c.ttsNativeClient!.getVoices).mockResolvedValue([]);
+      vi.mocked(c.ttsEdgeClient.getVoices).mockResolvedValue([]);
+      vi.mocked(c.ttsWebClient.getVoices).mockResolvedValue([]);
+
+      const result = await c.getVoices('zh');
+      expect(result).toEqual(offlineVoices);
     });
   });
 

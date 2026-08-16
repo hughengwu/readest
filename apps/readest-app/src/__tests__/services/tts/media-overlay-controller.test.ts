@@ -51,6 +51,11 @@ vi.mock('@/services/tts/NativeTTSClient', () => ({
     Object.assign(this, makeMockClient('native-tts', false));
   }),
 }));
+vi.mock('@/services/tts/OfflineTTSClient', () => ({
+  OfflineTTSClient: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+    Object.assign(this, makeMockClient('offline-tts', false));
+  }),
+}));
 vi.mock('@/services/tts/TTSUtils', () => ({
   TTSUtils: {
     getPreferredClient: vi.fn().mockReturnValue('edge-tts'),

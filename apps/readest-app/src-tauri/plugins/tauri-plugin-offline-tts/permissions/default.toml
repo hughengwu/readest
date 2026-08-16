@@ -1,0 +1,7 @@
+[default]
+description = "Default permissions for the plugin"
+permissions = [
+  "allow-init",
+  "allow-synthesize",
+  "allow-get-all-voices",
+]
