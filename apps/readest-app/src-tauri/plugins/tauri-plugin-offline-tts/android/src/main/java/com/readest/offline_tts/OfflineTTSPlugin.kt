@@ -70,7 +70,11 @@ class OfflineTTSPlugin(private val activity: Activity) : Plugin(activity) {
                     put("success", true)
                     put("sampleRate", engine.sampleRate())
                 })
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Catches Throwable, not just Exception: a missing/mismatched
+                // native .so surfaces as UnsatisfiedLinkError, which is an
+                // Error, not an Exception — left uncaught it crashes the
+                // whole app instead of just leaving this engine unavailable.
                 Log.e(TAG, "Failed to initialize offline TTS", e)
                 invoke.reject("Failed to initialize offline TTS: ${e.message}")
             } finally {
@@ -83,13 +87,20 @@ class OfflineTTSPlugin(private val activity: Activity) : Plugin(activity) {
     // sherpa-onnx's JNI supports this natively (OfflineTts(assetManager, ...)),
     // so there's no need to extract ~70MB to app storage on first run.
     private fun loadModel(): OfflineTts {
+        // dictDir deliberately omitted: sherpa-onnx's own Android reference
+        // app (SherpaOnnxTtsEngine/TtsEngine.kt) never sets it for this exact
+        // model, and for good reason — dictDir feeds cppjieba, a vendored C++
+        // dependency that opens it with plain std::ifstream, not the
+        // AAssetManager-aware reader model/lexicon/tokens go through. An
+        // asset-relative dictDir isn't a real filesystem path, so the native
+        // side calls exit(-1) on the failed open — an unrecoverable process
+        // kill no Kotlin try/catch can intercept, not just a thrown error.
         val config = OfflineTtsConfig(
             model = OfflineTtsModelConfig(
                 vits = OfflineTtsVitsModelConfig(
                     model = "$MODEL_ASSET_DIR/model.int8.onnx",
                     lexicon = "$MODEL_ASSET_DIR/lexicon.txt",
                     tokens = "$MODEL_ASSET_DIR/tokens.txt",
-                    dictDir = "$MODEL_ASSET_DIR/dict",
                 ),
                 numThreads = 2,
                 debug = false,
@@ -144,7 +155,7 @@ class OfflineTTSPlugin(private val activity: Activity) : Plugin(activity) {
                     put("audioBase64", Base64.encodeToString(bytes, Base64.NO_WRAP))
                     put("sampleRate", sampleRate)
                 })
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "Offline TTS synthesis failed", e)
                 invoke.reject("Offline TTS synthesis failed: ${e.message}")
             }

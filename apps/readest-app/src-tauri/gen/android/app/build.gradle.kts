@@ -90,6 +90,17 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    // The offline-tts plugin's bundled sherpa-onnx model assets are opened
+    // natively via a raw file descriptor (mmap), which Android's AssetManager
+    // can only do for STORED (uncompressed) zip entries — a compressed entry
+    // throws "this file can not be opened as a file descriptor" in native
+    // code, which crashes the whole app instead of just failing gracefully.
+    // The equivalent noCompress set on the plugin's own library-module
+    // build.gradle.kts is NOT enough: only the app module's packaging options
+    // apply to the final APK, library modules' get dropped when merged.
+    androidResources {
+        noCompress += listOf("onnx", "fst", "txt", "utf8")
+    }
 }
 
 rust {
